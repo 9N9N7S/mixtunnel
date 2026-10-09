@@ -1,0 +1,13 @@
+# 构建产物：由 tools/build.mjs 生成，不入库、不手工编辑
+dist/
+
+# 依赖与本地状态
+node_modules/
+.wrangler/
+.dev.vars
+.dev.vars.*
+*.log
+
+# 编辑器
+.vscode/
+.idea/

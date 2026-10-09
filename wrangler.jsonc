@@ -1,0 +1,26 @@
+{
+	// 构建管线说明见 tools/README.md
+	// main 指向构建产物，不要改成 _worker.js：部署的必须是去指纹后的代码
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "mixtunnel",
+	"main": "dist/_worker.js",
+	"compatibility_date": "2026-10-08",
+	"workers_dev": true,
+
+	// 产物已做标识符改名与明文拆分，这里只负责空白压缩
+	"minify": true,
+	"observability": {
+		"enabled": true
+	},
+
+	// KV 是可选依赖：代码里有 env.KV 能力探测，未绑定时订阅/日志相关功能自动降级。
+	// 需要时取消注释并填入真实 namespace id：
+	// "kv_namespaces": [{ "binding": "KV", "id": "<填入 namespace id>" }],
+
+	// 凭据类变量（UUID / ADMIN / KEY / PROXYIP / HOST / DEBUG / GO2SOCKS5 ...）不要写在这里，
+	// 一律在 dashboard 的 Worker 设置里配置，避免随仓库泄露。
+	// 本地调试用 .dev.vars（已 gitignore），格式：
+	// UUID=xxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx
+	// ADMIN=你的管理密码
+	// KEY=你的加密密钥
+}

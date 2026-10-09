@@ -1,0 +1,23 @@
+{
+  "name": "mixtunnel",
+  "version": "1.0.0",
+  "private": true,
+  "description": "可读源码 + 构建期去指纹管线：_worker.js 是唯一真源，dist/_worker.js 是构建产物",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/9N9N7S/mixtunnel.git"
+  },
+  "license": "ISC",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "build:dry": "node tools/build.mjs --dry",
+    "check": "node tools/check.mjs",
+    "verify": "npm run build && npm run check",
+    "deploy": "npm run verify && wrangler deploy",
+    "dev": "npm run build && wrangler dev",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "acorn": "^8.19.0"
+  }
+}
