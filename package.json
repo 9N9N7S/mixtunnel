@@ -18,6 +18,7 @@
     "tail": "wrangler tail"
   },
   "devDependencies": {
-    "acorn": "^8.19.0"
+    "acorn": "^8.19.0",
+    "wrangler": "^4.149.0"
   }
 }
