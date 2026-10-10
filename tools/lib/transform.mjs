@@ -79,6 +79,21 @@ function 匹配替换(表, 值) {
 	return null;
 }
 
+/**
+ * 每次构建一个种子，让"同一份源文件"产出"不同但等价"的产物：
+ * 检测方无法用固定指纹比对两次部署，产物自身也不带跨版本稳定的样式。
+ * 种子会随产物一起记录（dist/_worker.build.json），因此 check 仍能逐字节复现。
+ */
+function 随机源(种子) {
+	let s = (种子 >>> 0) || 0x9e3779b9;
+	return () => {
+		s ^= s << 13; s >>>= 0;
+		s ^= s >>> 17;
+		s ^= s << 5; s >>>= 0;
+		return s / 4294967296;
+	};
+}
+
 /** 生成未被占用的短名：池中按双射基数顺序取 a,b,...,z,A..Z,_,$ ,aa,ab... */
 function 取短名(池, 序号) {
 	let n = 序号 + 1, s = '';
@@ -125,15 +140,31 @@ function 转义模板(文本) {
 }
 
 /** 在一个 cooked 片段序列里找出所有拆分点，产出模板 raw 文本（用 ${'片段'} 插值藏起关键词） */
-function 拆模板(cooked, 词表, 变体) {
+function 拆模板(cooked, 词表, 变体, 随机) {
 	const 片 = 切分片段(cooked, 词表, 变体);
 	if (!片) return null;
-	// 片段必须各出现且仅出现一次：奇数片藏进插值，偶数片原样写出
-	let out = 转义模板(片[0]);
-	for (let i = 1; i < 片.length; i++) {
-		out += (i % 2 === 1 ? '${' + 引号(片[i]) + '}' : 转义模板(片[i]));
+	// 关键约束：每个切点两侧至少有一侧藏进插值。
+	// 否则相邻片段原样拼接会把关键词重新拼成明文（'invalid tr' + 'oja' 又拼回了 'trojan'）。
+	const n = 片.length;
+	const 藏 = new Array(n).fill(false);
+	for (let i = 0; i < n - 1; i++) {
+		if (藏[i] || 藏[i + 1]) continue;
+		if (随机 ? 随机() < 0.5 : false) 藏[i] = true; else 藏[i + 1] = true;
+	}
+	let out = '';
+	for (let i = 0; i < 片.length; i++) {
+		out += 藏[i] ? '${' + 引号(片[i], 随机 && 随机() < 0.4 ? '"' : "'") + '}' : 转义模板(片[i]);
 	}
 	return out;
+}
+
+/** 普通字面量的呈现方式：引号风格、以及是否改用模板字面量（值一致，归一化会折叠成同一种形态） */
+function 呈现片段(片, 随机) {
+	return 片.map(p => {
+		const 风格 = 随机 && 随机() < 0.4 ? '"' : "'";
+		if (随机 && 随机() < 0.25 && !/[`\n\r$]/.test(p)) return '`' + 转义模板(p) + '`';
+		return 引号(p, 风格);
+	});
 }
 
 /**
@@ -141,7 +172,11 @@ function 拆模板(cooked, 词表, 变体) {
  * @param {string} 源码 _worker.js 全文（不含 BOM）
  * @param {object} 规则 rules.mjs 导出的规则对象
  */
-export function 变换(源码, 规则) {
+export function 变换(源码, 规则, 构建 = {}) {
+	const 种子 = Number(构建.种子) || 0;
+	const 时间戳 = 构建.时间戳 || null;
+	const 随机 = 种子 ? 随机源(种子) : null;
+	const 取整 = n => (随机 ? Math.floor(随机() * n) : 0);
 	const { ast, 注释 } = 解析(源码);
 	const 允许改名 = 规则.选项?.标识符改名 !== false;
 	const 允许拆分 = 规则.选项?.明文拆分 !== false;
@@ -270,9 +305,10 @@ export function 变换(源码, 规则) {
 		const 候选 = [...候选集]
 			.filter(名 => !映射.has(名) && !保留.has(名) && 出现点.has(名))
 			.sort((a, b) => 出现点.get(a) - 出现点.get(b));
-		const 池 = 规则.名池 && 规则.名池.length ? 规则.名池 : 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_$';
+		const 池 = [...(规则.名池 && 规则.名池.length ? 规则.名池 : 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_$')];
+		if (随机) for (let i = 池.length - 1; i > 0; i--) { const j = 取整(i + 1); [池[i], 池[j]] = [池[j], 池[i]]; } // 每次构建换一套取名顺序
 		const 已占 = new Set([...全部名, ...属性键, ...保留, ...关键字, ...映射.values()]);
-		let 序号 = 0;
+		let 序号 = 随机 ? 取整(8) : 0;
 		for (const 名 of 候选) {
 			let 新 = 取短名(池, 序号);
 			while (已占.has(新) || 关键字.has(新)) 新 = 取短名(池, ++序号);
@@ -284,7 +320,7 @@ export function 变换(源码, 规则) {
 
 	// ── 第 3 步：组装编辑
 	const 编辑 = [];
-	const 统计 = { 注释: 0, 标识符改名: 0, 内部字段改名: 0, 简写展开: 0, 字面量替换: 0, 字面量拆分: 0, 正则拆分: 0, 模板拆分: 0 };
+	const 统计 = { 注释: 0, 标识符改名: 0, 内部字段改名: 0, 简写展开: 0, 字面量替换: 0, 字面量拆分: 0, 正则拆分: 0, 模板拆分: 0, 构建时间戳: 0 };
 	if (规则.选项?.剥离注释 !== false) {
 		for (const c of 注释) { 编辑.push({ 起: c.起, 止: c.止, 文: c.类型 === '块' ? ' ' : '', 类: '注释' }); 统计.注释++; }
 	}
@@ -305,32 +341,40 @@ export function 变换(源码, 规则) {
 
 	const 反向字面量 = new Map();
 	const 保护字面量 = new Set(规则.保护字面量 || []);
-	let 变体 = 0;
+	const 时间戳规则 = 规则.构建时间戳 || {};
+	let 变体 = 随机 ? 取整(1 << 20) : 0;
 	for (const p of 字符串点) {
 		if (p.是键 || 保护字面量.has(p.值)) continue;
 		const 替 = 匹配替换(规则.字典值, p.值);
 		if (替 !== null) {
-			编辑.push({ 起: p.起, 止: p.止, 文: 引号(替), 类: '字面量替换' });
+			编辑.push({ 起: p.起, 止: p.止, 文: 引号(替, 随机 && 随机() < 0.4 ? '"' : "'"), 类: '字面量替换' });
 			反向字面量.set(替, p.值);
 			统计.字面量替换++;
+			continue;
+		}
+		// 构建时间戳：源文件里的发布时间同步为本次构建时间（值会变，但每次都变）
+		if (时间戳规则.启用 && 时间戳 && 时间戳规则.匹配 instanceof RegExp && 时间戳规则.匹配.test(p.值) && p.值 !== 时间戳) {
+			编辑.push({ 起: p.起, 止: p.止, 文: 引号(时间戳), 类: '构建时间戳' });
+			反向字面量.set(时间戳, p.值);
+			统计.构建时间戳++;
 			continue;
 		}
 		if (!允许拆分) continue;
 		const 片 = 切分片段(p.值, 规则.拆分关键词, 变体++);
 		if (!片) continue;
-		编辑.push({ 起: p.起, 止: p.止, 文: 片.map(引号).join(' + '), 类: '字面量拆分' });
+		编辑.push({ 起: p.起, 止: p.止, 文: 呈现片段(片, 随机).join(' + '), 类: '字面量拆分' });
 		统计.字面量拆分++;
 	}
 	for (const p of 正则点) {
 		if (!允许拆分) continue;
 		const 片 = 切分片段(p.模式, 规则.拆分关键词, 变体++);
 		if (!片) continue;
-		编辑.push({ 起: p.起, 止: p.止, 文: 'new RegExp(' + 片.map(引号).join(' + ') + (p.标志 ? `, '${p.标志}'` : '') + ')', 类: '正则拆分' });
+		编辑.push({ 起: p.起, 止: p.止, 文: 'new RegExp(' + 呈现片段(片, 随机).join(' + ') + (p.标志 ? `, '${p.标志}'` : '') + ')', 类: '正则拆分' });
 		统计.正则拆分++;
 	}
 	for (const p of 模板点) {
 		if (!允许拆分) continue;
-		const raw = 拆模板(p.值, 规则.拆分关键词, 变体++);
+		const raw = 拆模板(p.值, 规则.拆分关键词, 变体++, 随机);
 		if (!raw || raw === p.值) continue;
 		编辑.push({ 起: p.起, 止: p.止, 文: raw, 类: '模板拆分' });
 		统计.模板拆分++;
@@ -386,5 +430,6 @@ export function 变换(源码, 规则) {
 	统计.标签数 = 标签集.size;
 	统计.内部字段数 = 内部字段.size;
 	统计.穿透属性键 = 穿透属性键;
+	统计.种子 = 种子;
 	return { 代码, 统计, 映射, 反向标识符, 反向字面量, 内部字段违规, 内部字段提醒 };
 }

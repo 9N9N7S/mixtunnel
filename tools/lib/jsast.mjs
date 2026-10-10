@@ -73,12 +73,13 @@ export function 收集绑定名(目标, 集合) {
 }
 
 /** 字符串字面量源码（保留原始书写形式） */
-export function 引号(文本) {
-	return "'" + 文本
+export function 引号(文本, 风格 = "'") {
+	const 双引号 = 风格 === '"';
+	return (双引号 ? '"' : "'") + 文本
 		.replace(/\\/g, '\\\\')
-		.replace(/'/g, "\\'")
+		.replace(new RegExp(双引号 ? '"' : "'", 'g'), 双引号 ? '\\"' : "\\'")
 		.replace(/\n/g, '\\n')
-		.replace(/\r/g, '\\r') + "'";
+		.replace(/\r/g, '\\r') + (双引号 ? '"' : "'");
 }
 
 /** 判断切点是否落在正则转义序列内部（如 \x41、\d） */
