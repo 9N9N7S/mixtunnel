@@ -24,13 +24,15 @@ const 导出清单 = [
 let 缓存模块 = null;
 
 export async function 加载Worker模块() {
-	if (缓存模块) return 缓存模块;
-	fs.mkdirSync(临时目录, { recursive: true });
-	const 源 = fs.readFileSync(path.join(仓库根, '_worker.js'), 'utf8').replace(/^\uFEFF/, '');
-	const 目标 = path.join(临时目录, 'worker-under-test.mjs');
-	fs.writeFileSync(目标, 源 + '\n\nexport { ' + 导出清单.join(', ') + ' };\n', 'utf8');
-	缓存模块 = await import('file://' + 目标.replace(/\\/g, '/'));
-	return 缓存模块;
+if (缓存模块) return 缓存模块;
+fs.mkdirSync(临时目录, { recursive: true });
+const 源 = fs.readFileSync(path.join(仓库根, '_worker.js'), 'utf8').replace(/^\uFEFF/, '');
+// 文件名刻意避开 node --test 自动发现的命名模式（*-test.mjs / *.test.mjs），
+// 否则这个动态副本会被当成测试文件重复加载
+const 目标 = path.join(临时目录, 'worker.module.mjs');
+fs.writeFileSync(目标, 源 + '\n\nexport { ' + 导出清单.join(', ') + ' };\n', 'utf8');
+缓存模块 = await import('file://' + 目标.replace(/\\/g, '/'));
+return 缓存模块;
 }
 
 // 构造一个只读一次的假 reader，用于首包/首帧读取测试
