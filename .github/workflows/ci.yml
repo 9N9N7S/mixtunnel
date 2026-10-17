@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      # build + check：证明 dist/_worker.js == _worker.js 按 rules.mjs 的变换，且每次构建都是新指纹
+      - run: npm run verify
+      # 单元测试：协议解析、日志裁剪、配置防御、收发管道、超时与缓存
+      - run: npm test

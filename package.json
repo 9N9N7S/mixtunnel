@@ -13,7 +13,8 @@
     "build:dry": "node tools/build.mjs --dry",
     "check": "node tools/check.mjs",
     "verify": "npm run build && npm run check",
-    "deploy": "npm run verify && wrangler deploy",
+    "test": "node --test tests/",
+    "deploy": "npm run verify && npm test && wrangler deploy",
     "dev": "npm run build && wrangler dev",
     "tail": "wrangler tail"
   },

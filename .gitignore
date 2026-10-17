@@ -11,3 +11,6 @@ node_modules/
 # 编辑器
 .vscode/
 .idea/
+
+# 测试临时产物（tests/helpers.mjs 生成的 _worker.js 副本）
+tests/.tmp/

@@ -115,6 +115,8 @@ npm run verify     # build + check
 ## 贡献者须知
 
 1. **只改 `_worker.js`**，改完至少跑一次 `npm run verify`。`check` 发现产物与重新构建结果不一致会直接判失败——这是「不许手改 `dist/`」的强制点。
+   - `npm run verify` 之外还有 `npm test`（Node 内置测试运行器，无需额外依赖）；`npm run deploy` 现在会自动带上测试。
+   - `tests/` 里的单测通过复制 `_worker.js` 追加 `export` 的方式加载内部函数，**不改动生产文件**；新增纯函数时记得在 `tests/helpers.mjs` 的导出清单里补名。
 2. **`_worker.js` 有 5 MB，但只有前约 6600 行是代码**，其余是一整块希伯来圣经填充注释（无功能，仅涨体积）。定位问题请在前 6600 行内搜索。
 3. **注意文件编码**：`_worker.js` 带 UTF-8 BOM，而产物要求无 BOM（BOM 会被 `check.mjs` 判为不变量失败）。
 4. `env.PROXYIP` / `env.UUID` / `env.ADMIN` / `/sub` / `token` 等名字是**对外契约**，与 Dashboard 变量名、客户端订阅参数绑定，不可改名。
